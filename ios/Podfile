@@ -4,37 +4,68 @@ require Pod::Executable.execute_command('node', ['-p',
     "react-native/scripts/react_native_pods.rb",
     {paths: [process.argv[1]]},
   )', __dir__]).strip
-
-platform :ios, min_ios_version_supported
+ 
+ 
+  require_relative '../node_modules/react-native/scripts/react_native_pods'
+  require_relative '../node_modules/@react-native-community/cli-platform-ios/native_modules'
+  #Add moxo source here
+  source 'https://github.com/CocoaPods/Specs.git'
+  source 'https://github.com/goinstant/pods-specs-public'
+  source 'https://maven.moxtra.com/repo/moxtra-specs.git'
+  
+  #Change platform version if is not iOS 13
+  platform :ios, '13.4'
+  # pod 'Firebase/Messaging' :modular_headers => true
+  # pod 'Firebase', :modular_headers => true
+  pod 'FirebaseCoreInternal', :modular_headers => true
+  pod 'GoogleUtilities', :modular_headers => true
+  pod 'FirebaseCore', :modular_headers => true
+  install! 'cocoapods', :deterministic_uuids => false
 prepare_react_native_project!
-
+ 
 linkage = ENV['USE_FRAMEWORKS']
 if linkage != nil
   Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
   use_frameworks! :linkage => linkage.to_sym
 end
-
+ 
 target 'TestProject' do
   config = use_native_modules!
+  #config = use_react_native!
 
+  use_frameworks! :linkage => :static
+  $RNFirebaseAsStaticFramework = true
+ 
   use_react_native!(
     :path => config[:reactNativePath],
     # An absolute path to your application root.
-    :app_path => "#{Pod::Config.instance.installation_root}/.."
+    :hermes_enabled => false # Set to false if you're not using Hermes
   )
-
+ 
   target 'TestProjectTests' do
     inherit! :complete
     # Pods for testing
   end
 
   post_install do |installer|
-    # https://github.com/facebook/react-native/blob/main/packages/react-native/scripts/react_native_pods.rb#L197-L202
-    react_native_post_install(
-      installer,
-      config[:reactNativePath],
-      :mac_catalyst_enabled => false,
-      # :ccache_enabled => true
-    )
+      installer.pods_project.targets.each do |target|
+          target.build_configurations.each do |config|
+            target.build_settings(config.name)['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+          end
+      end
+    installer.pods_project.build_configurations.each do |config|
+      config.build_settings["EXCLUDED_ARCHS[sdk=iphonesimulator*]"] = "arm64"
+      end
+    react_native_post_install(installer)
+
+    # add this below
+    installer.aggregate_targets.each do |aggregate_target|
+      aggregate_target.user_project.native_targets.each do |target|
+        target.build_configurations.each do |config|
+          config.build_settings['LIBRARY_SEARCH_PATHS'] = ['$(SDKROOT)/usr/lib/swift', '$(inherited)']
+        end
+      end
+      aggregate_target.user_project.save
+    end
   end
 end
